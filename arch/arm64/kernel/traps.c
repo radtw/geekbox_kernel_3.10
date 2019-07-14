@@ -41,6 +41,7 @@
 
 #if TSAI
 #include "tsai_macro.h"
+#include "tsai_spy.h"
 #endif
 
 static const char *handler[]= {
@@ -293,7 +294,11 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	if (!aarch32_break_handler(regs))
 		return;
 	if (user_mode(regs)) {
+#if TSAI
+		tsai_print_vma_for_address(pc);
+#endif
 		if (compat_thumb_mode(regs)) {
+			printk("TSAI: is compat_thumb_mode() \n");
 			if (get_user(instr, (u16 __user *)pc))
 				goto die_sig;
 			if (is_wide_instruction(instr)) {
@@ -304,8 +309,19 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 				instr |= instr2;
 			}
 		} else if (get_user(instr, (u32 __user *)pc)) {
+#if TSAI
+			printk("TSAI: unable to read from pc %p @%s:%d\n", pc, __FILE__, __LINE__);
+#endif
 			goto die_sig;
 		}
+#if TSAI
+		printk("TSAI: instr=%x @%d\n", instr, __LINE__);
+		if (instr == 0xd4400000) { /* HLT #0 instruction, most certainly it's my debug code, ignore if there is not JTAG attached */
+			printk("TSAI: ignore HLT #0 at %p @%s\n", pc, __FILE__);
+			regs->pc += 4;
+			return;
+		}
+#endif
 	} else {
 		/* kernel mode */
 		instr = *((u32 *)pc);
@@ -317,8 +333,8 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 die_sig:
 	if (show_unhandled_signals && unhandled_signal(current, SIGILL) &&
 	    printk_ratelimit()) {
-		pr_info("%s[%d]: undefined instruction: pc=%p\n",
-			current->comm, task_pid_nr(current), pc);
+		pr_info("%s[%d]: undefined instruction: pc=%p instr %08x\n",
+			current->comm, task_pid_nr(current), pc, instr);
 		dump_instr(KERN_INFO, regs);
 	}
 

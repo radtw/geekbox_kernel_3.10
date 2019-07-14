@@ -1490,8 +1490,8 @@ static void stmmac_check_ether_addr(struct stmmac_priv *priv)
 		if (!is_valid_ether_addr(priv->dev->dev_addr))
 			eth_hw_addr_random(priv->dev);
 	}
-	pr_warn("%s: device MAC address %pM\n", priv->dev->name,
-		priv->dev->dev_addr);
+	pr_warn("%s: device MAC address %pM @%s\n", priv->dev->name,
+		priv->dev->dev_addr, __FILE__);
 }
 
 /**

@@ -204,6 +204,24 @@ void tsai_printk_stack_trace_current(void) {
 	tsai_printk_stack_trace(current);
 }
 
+/* given an address, print out which VMA contains it */
+void tsai_print_vma_for_address(void* pc) {
+	struct vm_area_struct* vma;
+	char full_path[256];
+	unsigned long vpc;
+	vpc = (unsigned long)pc;
+	vma = find_vma(current->mm, vpc );
+	if (vma) {
+		char* p;
+		unsigned long offset = vpc - vma->vm_start;
+		p = d_path(&vma->vm_file->f_path, full_path, sizeof(full_path));
+		printk("%p %s (%lx--%lx) offset %lx @%s:%d\n", pc, p, vma->vm_start, vma->vm_end, offset, __FILE__, __LINE__);
+	}
+	else {
+
+	}
+}
+
 /* given a name, walk through the tasks and find by name
  * return -1 if not found
  * */
