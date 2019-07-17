@@ -29,6 +29,10 @@
 #include "base.h"
 #include "power/power.h"
 
+#if TSAI
+	#include "tsai_macro.h"
+#endif
+
 /*
  * Deferred Probe infrastructure.
  *
@@ -401,13 +405,27 @@ int driver_probe_device(struct device_driver *drv, struct device *dev)
 
 	return ret;
 }
+#if TSAI
+extern void* tsai_bus_for_each_dev_fn;
+#endif
 
 static int __device_attach(struct device_driver *drv, void *data)
 {
 	struct device *dev = data;
+#if TSAI
+	int match = driver_match_device(drv, dev);
 
+	if (tsai_bus_for_each_dev_fn == __device_attach) {
+		printk("TSAI __device_attach drv %s dev %s match %d \n",
+				drv->name, dev->kobj.name, match );
+	}
+
+	if (!match)
+		return 0;
+#else
 	if (!driver_match_device(drv, dev))
 		return 0;
+#endif
 
 	return driver_probe_device(drv, dev);
 }
@@ -429,7 +447,17 @@ static int __device_attach(struct device_driver *drv, void *data)
 int device_attach(struct device *dev)
 {
 	int ret = 0;
+	printk("TSAI: device_attach dev=%s bus=%s \n", dev->kobj.name, dev->bus->name);
+#if 0 && TSAI
+	if (strcmp(dev->kobj.name, "ff900800.iep_mmu")==0) {
+		printk("TSAI: device_attach dev=%s bus=%s \n", dev->kobj.name, dev->bus->name);
+		tsai_bus_for_each_dev_fn = __device_attach;
 
+		while(!tsai_move_on) {
+			cpu_relax();
+		}
+	}
+#endif
 	device_lock(dev);
 	if (dev->driver) {
 		if (klist_node_attached(&dev->p->knode_driver)) {
@@ -449,6 +477,9 @@ int device_attach(struct device *dev)
 	}
 out_unlock:
 	device_unlock(dev);
+#if TSAI
+	tsai_bus_for_each_dev_fn = 0;
+#endif
 	return ret;
 }
 EXPORT_SYMBOL_GPL(device_attach);
@@ -466,6 +497,14 @@ static int __driver_attach(struct device *dev, void *data)
 	 * driver_probe_device() will spit a warning if there
 	 * is an error.
 	 */
+#if 0 && TSAI
+	if (strcmp(drv->name, "pvrsrvkm")==0) {
+		if (strcmp(dev->kobj.name, "ffa30000.gpu")==0) {
+			printk("TSAI: __driver_attach driver=%s dev=%s \n", drv->name, dev->kobj.name);
+		}
+	}
+#endif
+
 
 	if (!driver_match_device(drv, dev))
 		return 0;
@@ -493,6 +532,12 @@ static int __driver_attach(struct device *dev, void *data)
  */
 int driver_attach(struct device_driver *drv)
 {
+#if 0 && TSAI
+	tsai_bus_for_each_dev_data = __driver_attach;
+	if (strcmp(drv->name, "pvrsrvkm")==0) {
+		printk("TSAI: driver_attach driver=%s  \n", drv->name);
+	}
+#endif
 	return bus_for_each_dev(drv->bus, NULL, drv, __driver_attach);
 }
 EXPORT_SYMBOL_GPL(driver_attach);

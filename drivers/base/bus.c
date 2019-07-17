@@ -20,6 +20,10 @@
 #include "base.h"
 #include "power/power.h"
 
+#if TSAI
+#include "tsai_macro.h"
+#endif
+
 /* /sys/devices/system */
 static struct kset *system_kset;
 
@@ -266,6 +270,11 @@ static struct device *next_device(struct klist_iter *i)
 	return dev;
 }
 
+#if TSAI
+	void* tsai_bus_for_each_dev_fn;
+	int tsai_print_dev_fn = 0;
+#endif
+
 /**
  * bus_for_each_dev - device iterator.
  * @bus: bus type.
@@ -297,8 +306,27 @@ int bus_for_each_dev(struct bus_type *bus, struct device *start,
 
 	klist_iter_init_node(&bus->p->klist_devices, &i,
 			     (start ? &start->p->knode_bus : NULL));
+#if 0
+	if (tsai_bus_for_each_dev_data == fn)
+	{
+		struct device_driver *drv = (struct device_driver*)data;
+		if (strcmp(drv->name, "pvrsrvkm")==0) {
+			//tsai_print_dev_fn = 1;
+			printk("TSAI: bus_for_each_dev driver=%s  \n", drv->name);
+		}
+	}
+#endif
+#if TSAI
+	while ((dev = next_device(&i)) && !error) {
+		error = fn(dev, data);
+
+		if (tsai_bus_for_each_dev_fn == fn)
+			printk("TSAI: bus_for_each_dev %s error=%d \n", dev->kobj.name, error);
+	}
+#else
 	while ((dev = next_device(&i)) && !error)
 		error = fn(dev, data);
+#endif
 	klist_iter_exit(&i);
 	return error;
 }
@@ -672,6 +700,9 @@ static ssize_t driver_uevent_store(struct device_driver *drv,
 }
 static DRIVER_ATTR(uevent, S_IWUSR, NULL, driver_uevent_store);
 
+#if TSAI
+	#include <linux/platform_device.h>
+#endif
 /**
  * bus_add_driver - Add a driver to the bus.
  * @drv: driver.
@@ -687,7 +718,17 @@ int bus_add_driver(struct device_driver *drv)
 		return -EINVAL;
 
 	pr_debug("bus: '%s': add driver %s\n", bus->name, drv->name);
-
+#if TSAI
+	{
+		uint64_t bus_name_u64 = *(uint64_t*)(bus->name);
+		if (bus_name_u64==0x6D726F6674616C70) { /* "platform" */
+			struct platform_driver* pd = container_of(drv, struct platform_driver, driver);
+			printk("TSAI  bus '%s': add driver %s probe %p %s\n", bus->name, drv->name, pd->probe, __FILE__);
+		}
+		else
+			printk("TSAI  bus '%s': add driver %s %s\n", bus->name, drv->name, __FILE__);
+	}
+#endif
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
 		error = -ENOMEM;

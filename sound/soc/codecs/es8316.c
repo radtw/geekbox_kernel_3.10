@@ -34,7 +34,7 @@
 #include <linux/regmap.h>
 #include "es8316.h"
 
-#if 0
+#if 1
 #define DBG(x...) printk(x)
 #else
 #define DBG(x...) do { } while (0)
@@ -1249,7 +1249,7 @@ static int es8316_spi_probe(struct spi_device *spi)
 {
 	struct es8316_priv *es8316;
 	int ret;
-
+printk("es8316_spi_probe @%s\n", __FILE__);
 	es8316 = kzalloc(sizeof(*es8316), GFP_KERNEL);
 	if (es8316 == NULL)
 		return -ENOMEM;
@@ -1323,7 +1323,7 @@ static int es8316_i2c_probe(struct i2c_client *i2c_client,
 	enum of_gpio_flags flags;
 	struct device_node *np = i2c_client->dev.of_node;
 
-	DBG("---%s---probe start\n", __func__);
+	DBG("---%s---probe start @%s\n", __func__, __FILE__);
 
 	es8316 = kzalloc(sizeof(*es8316), GFP_KERNEL);
 	if (es8316 == NULL)
@@ -1434,11 +1434,14 @@ static struct i2c_driver es8316_i2c_driver = {
 
 static int __init es8316_init(void)
 {
-	DBG("--%s--start--\n", __func__);
+	printk("TSAI es8316_init @%s\n", __FILE__);
+	DBG("--%s--start--%s\n", __func__, __FILE__);
 #if defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE)
+	DBG("i2c_add_driver %s\n", __FILE__);
 	return i2c_add_driver(&es8316_i2c_driver);
 #endif
 #if defined(CONFIG_SPI_MASTER)
+	DBG("spi_register_driver %s\n", __FILE__);
 	return spi_register_driver(&es8316_spi_driver);
 #endif
 }

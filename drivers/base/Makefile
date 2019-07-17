@@ -22,6 +22,16 @@ obj-$(CONFIG_SYS_HYPERVISOR) += hypervisor.o
 obj-$(CONFIG_REGMAP)	+= regmap/
 obj-$(CONFIG_SOC_BUS) += soc.o
 obj-$(CONFIG_PINCTRL) += pinctrl.o
+ifeq ($(TSAI_OPT),3) 
+	CFLAGS_bus.o += -O0
+	CFLAGS_dma-mapping.o += -O0
+	CFLAGS_dma-contiguous.o += -O0
+	CFLAGS_dd.o += -O0
+	CFLAGS_platform.o += -O0
+	CFLAGS_driver.o += -O0
+	CFLAGS_firmware.o += -O0
+	CFLAGS_firmware_class.o += -O0
+endif
 
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG
 
