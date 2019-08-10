@@ -1620,7 +1620,11 @@ int jbd2_journal_load(journal_t *journal)
 		     ~cpu_to_be32(JBD2_KNOWN_INCOMPAT_FEATURES))) {
 			printk(KERN_WARNING
 				"JBD2: Unrecognised features on journal\n");
+#if TSAI
+			pr_info("TSAI: version=%d Ignore unknown journey feature @%s\n", journal->j_format_version, __FILE__);
+#else
 			return -EINVAL;
+#endif
 		}
 	}
 

@@ -18,6 +18,11 @@
 #include <linux/of.h>
 #endif
 
+#if TSAI
+#include "tsai_macro.h"
+#include "tsai_spy.h"
+#endif
+
 struct rknand_info {
     int tag;
     int enable;
@@ -37,6 +42,15 @@ struct rknand_info {
     void (*rknand_dev_cache_flush)(void);
     
     int reserved1[16];
+#if TSAI
+    /* rknand_probe() enter twice, one for ff400000.nandc, and one for ff400000.nandc0
+     * I think they are the same, so if ff40000 is already ioremapped, no need to do it a second time.
+     * maybe rk3368.dtsi have nandc and nandc0 at the same address by error?
+     * */
+
+    unsigned int tsai_resource_start;
+    void*		tsai_membase;
+#endif
 };
 
 struct rk_nandc_info 
@@ -222,7 +236,10 @@ static int rknand_probe(struct platform_device *pdev)
 	int irq ;
 	struct resource		*mem;
 	void __iomem    *membase;
-
+#if TSAI
+	pr_info("TSAI rknand_probe @%s\n", __FILE__);
+	//tsai_printk_stack_trace_current();
+#endif
     if(gpNandInfo == NULL)
     {
         gpNandInfo = kzalloc(sizeof(struct rknand_info), GFP_KERNEL);
@@ -232,7 +249,21 @@ static int rknand_probe(struct platform_device *pdev)
         gpNandInfo->nand_shutdown_state = 0;
 	}
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	membase = devm_request_and_ioremap(&pdev->dev, mem);
+#if TSAI
+	/* enter 2nd time */
+	if (gpNandInfo->tsai_resource_start == mem->start) {
+		membase = gpNandInfo->tsai_membase;
+		pr_info("TSAI:rknand_probe enter 2nd time, skip devm_ioremap_resource @%s\n", __FILE__);
+	}
+	else {
+#endif
+		membase = devm_request_and_ioremap(&pdev->dev, mem);
+#if TSAI
+		gpNandInfo->tsai_resource_start = mem->start;
+		gpNandInfo->tsai_membase = membase;
+	}
+#endif
+
 	if (membase == 0) 
 	{
 		dev_err(&pdev->dev, "no reg resource?\n");
@@ -246,16 +277,23 @@ static int rknand_probe(struct platform_device *pdev)
 	}
     pdev->id = id;
 #endif
+    pr_info("nandc_id = %d \n", id);
     if(id == 0)
 	{
         memcpy(nand_idb_data,membase+0x1000,0x800);
+#if 1 && TSAI
+        pr_info("nand_idb_data[0] = %x [8] = %x \n",
+        		*(int *)(&nand_idb_data[0]),
+				*(int *)(&nand_idb_data[8]));
+#endif
 		if (*(int *)(&nand_idb_data[0]) == 0x44535953) {
 			rknand_boot_media = *(int *)(&nand_idb_data[8]);
-			if (rknand_boot_media == 2) /*boot from emmc*/
+			if (rknand_boot_media == 2) {/*boot from emmc*/
 #if TSAI
 				printk("TSAI: rknand_boot_media==2 boot from emmc, return -1 (expected) %s\n", __FILE__);
 #endif
 				return -1;
+			}
 		}
 	}
 	else if(id >= 2)
@@ -279,13 +317,13 @@ static int rknand_probe(struct platform_device *pdev)
 
 	if (unlikely(IS_ERR(g_nandc_info[id].clk)) || unlikely(IS_ERR(g_nandc_info[id].hclk))
 	|| unlikely(IS_ERR(g_nandc_info[id].gclk))) {
-        printk("rknand_probe get clk error\n");
+        pr_info("rknand_probe get clk error\n");
         return -1;
 	}
 
     clk_set_rate(g_nandc_info[id].clk,150*1000*1000);
 	g_nandc_info[id].clk_rate = clk_get_rate(g_nandc_info[id].clk );
-    printk("rknand_probe clk rate = %d\n",g_nandc_info[id].clk_rate);
+    pr_info("rknand_probe clk rate = %d\n",g_nandc_info[id].clk_rate);
     gpNandInfo->clk_rate[id] = g_nandc_info[id].clk_rate;
     
 	clk_prepare_enable( g_nandc_info[id].clk );
@@ -296,6 +334,7 @@ static int rknand_probe(struct platform_device *pdev)
 
 static int rknand_suspend(struct platform_device *pdev, pm_message_t state)
 {
+	pr_info("rknand_suspend() \n");
     if(gpNandInfo->rknand_suspend  && gpNandInfo->nand_suspend_state == 0){
        gpNandInfo->nand_suspend_state = 1;
         gpNandInfo->rknand_suspend();
@@ -306,6 +345,7 @@ static int rknand_suspend(struct platform_device *pdev, pm_message_t state)
 
 static int rknand_resume(struct platform_device *pdev)
 {
+	pr_info("rknand_resume() \n");
     if(gpNandInfo->rknand_resume && gpNandInfo->nand_suspend_state == 1){
        gpNandInfo->nand_suspend_state = 0;
        //TODO:nandc clk enable
@@ -316,6 +356,7 @@ static int rknand_resume(struct platform_device *pdev)
 
 static void rknand_shutdown(struct platform_device *pdev)
 {
+	pr_info("rknand_shutdown() \n");
     if(gpNandInfo->rknand_buffer_shutdown && gpNandInfo->nand_shutdown_state == 0){
         gpNandInfo->nand_shutdown_state = 1;
         gpNandInfo->rknand_buffer_shutdown();
@@ -324,6 +365,7 @@ static void rknand_shutdown(struct platform_device *pdev)
 
 void rknand_dev_cache_flush(void)
 {
+	pr_info("rknand_dev_cache_flush() \n");
     if(gpNandInfo->rknand_dev_cache_flush)
         gpNandInfo->rknand_dev_cache_flush();
 }
@@ -351,7 +393,7 @@ static struct platform_driver rknand_driver = {
 
 static void __exit rknand_part_exit(void)
 {
-	printk("rknand_part_exit: \n");
+	pr_info("rknand_part_exit: \n");
     platform_driver_unregister(&rknand_driver);
     if(gpNandInfo->rknand_exit)
         gpNandInfo->rknand_exit();    
@@ -363,7 +405,7 @@ MODULE_ALIAS(DRIVER_NAME);
 static int __init rknand_part_init(void)
 {
 	int ret = 0;
-	printk("%s\n", RKNAND_VERSION_AND_DATE);
+	pr_info("%s\n", RKNAND_VERSION_AND_DATE);
 
 	cmdline = strstr(saved_command_line, "mtdparts=") + 9;
 
@@ -371,7 +413,7 @@ static int __init rknand_part_init(void)
     memset(g_nandc_info,0,sizeof(g_nandc_info));
 
 	ret = platform_driver_register(&rknand_driver);
-	printk("rknand_driver:ret = %x \n",ret);
+	pr_info("rknand_driver:ret = %x \n",ret);
 	return ret;
 }
 

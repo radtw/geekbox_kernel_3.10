@@ -1419,6 +1419,9 @@ static int console_trylock_for_printk(unsigned int cpu)
 		 * in order to do this test safely.
 		 */
 		if (!can_use_console(cpu)) {
+#if TSAI
+			pr_info("TSAI: cannot use console @%s:%d\n", __FILE__,__LINE__);
+#endif
 			console_locked = 0;
 			wake = 1;
 			retval = 0;
@@ -1965,6 +1968,9 @@ void suspend_console(void)
 {
 	if (!console_suspend_enabled)
 		return;
+#if TSAI
+	pr_info("TSAI suspend_console @%s\n", __FILE__);
+#endif
 	printk("Suspending console(s) (use no_console_suspend to debug)\n");
 	console_lock();
 	console_suspended = 1;
@@ -1975,6 +1981,9 @@ void resume_console(void)
 {
 	if (!console_suspend_enabled)
 		return;
+#if TSAI
+	pr_info("TSAI resume_console @%s\n", __FILE__);
+#endif
 	down(&console_sem);
 	console_suspended = 0;
 	console_unlock();
@@ -2015,6 +2024,9 @@ static int __cpuinit console_cpu_notify(struct notifier_block *self,
  */
 void console_lock(void)
 {
+#if TSAI
+	pr_info("TSAI console_lock @%s\n", __FILE__);
+#endif
 	might_sleep();
 
 	down(&console_sem);
@@ -2104,7 +2116,9 @@ void console_unlock(void)
 	unsigned long flags;
 	bool wake_klogd = false;
 	bool retry;
-
+#if 0 && TSAI
+	pr_info("TSAI console_unlock @%s\n", __FILE__);
+#endif
 	if (console_suspended) {
 		up(&console_sem);
 		return;
@@ -2261,6 +2275,9 @@ struct tty_driver *console_device(int *index)
  */
 void console_stop(struct console *console)
 {
+#if TSAI
+	pr_info("TSAI console_stop @%s\n", __FILE__);
+#endif
 	console_lock();
 	console->flags &= ~CON_ENABLED;
 	console_unlock();
@@ -2269,6 +2286,9 @@ EXPORT_SYMBOL(console_stop);
 
 void console_start(struct console *console)
 {
+#if TSAI
+	pr_info("TSAI console_start @%s\n", __FILE__);
+#endif
 	console_lock();
 	console->flags |= CON_ENABLED;
 	console_unlock();
