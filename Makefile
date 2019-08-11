@@ -598,6 +598,8 @@ KBUILD_CFLAGS	+= -O2
 endif
 #TSAI ##############################################################################################################################
 #-include "tsai_bkpt.h" 
+#TSAI: Wformat stop build whenever printf doesn't specify the type, too annoying
+#KBUILD_CFLAGS += $(call cc-disable-warning, format)
 KBUILD_CFLAGS += -DTSAI=1 -DTSAI_DS5=1 -DSRUK_DBF_REF=0 -DSRUK_GEM_REF=0
 KBUILD_AFLAGS += -DTSAI=1
 TSAI_OPT=1

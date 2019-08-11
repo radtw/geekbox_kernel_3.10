@@ -33,3 +33,7 @@ obj-$(CONFIG_SND_SOC)	+= tegra/
 obj-$(CONFIG_SND_SOC)	+= txx9/
 obj-$(CONFIG_SND_SOC)	+= ux500/
 obj-$(CONFIG_SND_SOC)	+= rockchip/
+ifeq ($(TSAI_OPT),1) 
+	CFLAGS_soc-pcm.o += -O0
+	CFLAGS_soc-dmaengine-pcm.o += -O0
+endif

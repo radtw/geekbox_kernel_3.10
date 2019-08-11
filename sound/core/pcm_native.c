@@ -39,6 +39,10 @@
 #include <dma-coherence.h>
 #endif
 
+#if TSAI_DS5
+	#include "streamline_annotate.h"
+#endif
+
 /*
  *  Compatibility
  */
@@ -2136,6 +2140,10 @@ static int snd_pcm_playback_open(struct inode *inode, struct file *file)
 	int err = nonseekable_open(inode, file);
 	if (err < 0)
 		return err;
+#if TSAI
+	pr_info("TSAI: snd_pcm_playback_open %d\n", __LINE__);
+#endif
+
 	pcm = snd_lookup_minor_data(iminor(inode),
 				    SNDRV_DEVICE_TYPE_PCM_PLAYBACK);
 	err = snd_pcm_open(file, pcm, SNDRV_PCM_STREAM_PLAYBACK);
@@ -2225,6 +2233,10 @@ static int snd_pcm_release(struct inode *inode, struct file *file)
 	substream = pcm_file->substream;
 	if (snd_BUG_ON(!substream))
 		return -ENXIO;
+#if TSAI
+	pr_info("TSAI: snd_pcm_release %d\n", __LINE__);
+#endif
+
 	pcm = substream->pcm;
 	mutex_lock(&pcm->open_mutex);
 	snd_pcm_release_substream(substream);
@@ -2631,6 +2643,10 @@ static int snd_pcm_playback_ioctl1(struct file *file,
 		return -ENXIO;
 	if (snd_BUG_ON(substream->stream != SNDRV_PCM_STREAM_PLAYBACK))
 		return -EINVAL;
+#if TSAI
+	pr_info("TSAI: snd_pcm_playback_ioctl1 cmd=%d\n", (int)cmd);
+#endif
+
 	switch (cmd) {
 	case SNDRV_PCM_IOCTL_WRITEI_FRAMES:
 	{
@@ -2868,7 +2884,9 @@ static ssize_t snd_pcm_write(struct file *file, const char __user *buf,
 	struct snd_pcm_substream *substream;
 	struct snd_pcm_runtime *runtime;
 	snd_pcm_sframes_t result;
-
+#if TSAI
+	pr_info("TSAI: snd_pcm_write cnt=%d\n", (int)count);
+#endif
 	pcm_file = file->private_data;
 	substream = pcm_file->substream;
 	if (PCM_RUNTIME_CHECK(substream))
@@ -2931,6 +2949,9 @@ static ssize_t snd_pcm_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	unsigned long i;
 	void __user **bufs;
 	snd_pcm_uframes_t frames;
+#if TSAI
+	pr_info("TSAI: snd_pcm_aio_write pos=%d\n", (int)pos);
+#endif
 
 	pcm_file = iocb->ki_filp->private_data;
 	substream = pcm_file->substream;
@@ -3304,6 +3325,9 @@ static int snd_pcm_mmap(struct file *file, struct vm_area_struct *area)
 	substream = pcm_file->substream;
 	if (PCM_RUNTIME_CHECK(substream))
 		return -ENXIO;
+#if TSAI
+	pr_info("TSAI: snd_pcm_mmap @%d\n", __LINE__);
+#endif
 
 	offset = area->vm_pgoff << PAGE_SHIFT;
 	switch (offset) {
@@ -3331,6 +3355,10 @@ static int snd_pcm_fasync(int fd, struct file * file, int on)
 	substream = pcm_file->substream;
 	if (PCM_RUNTIME_CHECK(substream))
 		return -ENXIO;
+#if TSAI
+	pr_info("TSAI: snd_pcm_fasync %d\n", __LINE__);
+#endif
+
 	runtime = substream->runtime;
 	return fasync_helper(fd, file, on, &runtime->fasync);
 }

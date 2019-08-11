@@ -28,6 +28,9 @@
 
 #include <sound/dmaengine_pcm.h>
 
+#if TSAI_DS5
+#include "streamline_annotate.h"
+#endif
 
 #undef CONFIG_ARCH_ROCKCHIP
 
@@ -140,11 +143,24 @@ static int debug_audio_timeout = 0;
 module_param(debug_audio_timeout, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(debug_audio_timeout, "Debug interface Audio DMA buffdone time out");
 #endif
+
+#if TSAI_DS5
+/* [0]=playback, [1]=capture */
+extern struct task_struct*  tsai_dma_submit_task[2];
+#endif
+
 static void dmaengine_pcm_dma_complete(void *arg)
 {
 	struct snd_pcm_substream *substream = arg;
 	struct dmaengine_pcm_runtime_data *prtd = substream_to_prtd(substream);
-
+/* TSAI: this function is called from within interrupt content!*/
+#if TSAI_DS5
+	u64 tsai_ts = ANNOTATE_GET_TS();
+	int dir = substream->stream?1:0;
+	int pid = tsai_dma_submit_task[dir] ? tsai_dma_submit_task[dir]->pid: 0;
+	char msg[256];
+	struct snd_pcm_runtime *runtime = substream->runtime;
+#endif
 #ifdef CONFIG_ARCH_ROCKCHIP
 	if(debug_audio_timeout){
 		struct snd_pcm_runtime *runtime = substream->runtime;
@@ -167,6 +183,12 @@ static void dmaengine_pcm_dma_complete(void *arg)
 		prtd->pos = 0;
 
 	snd_pcm_period_elapsed(substream);
+#if TSAI_DS5
+	sprintf(msg, "dmaengine_pcm_dma_complete dir %d pos %u hwbase %x hwptr %x",
+			dir, prtd->pos, runtime->hw_ptr_base, runtime->status->hw_ptr);
+	ANNOTATE_CHANNEL_COLOR_TS_PID(7, ANNOTATE_RED, msg, &tsai_ts, &pid);
+	ANNOTATE_CHANNEL_END_TS_PID(7, &tsai_ts, &pid);
+#endif
 }
 
 static int dmaengine_pcm_prepare_and_submit(struct snd_pcm_substream *substream)
@@ -176,7 +198,12 @@ static int dmaengine_pcm_prepare_and_submit(struct snd_pcm_substream *substream)
 	struct dma_async_tx_descriptor *desc;
 	enum dma_transfer_direction direction;
 	unsigned long flags = DMA_CTRL_ACK;
-
+#if TSAI_DS5
+	u64 tsai_ts = ANNOTATE_GET_TS();
+	char msg[256] = {0};
+	int dir = substream->stream?1:0;
+	tsai_dma_submit_task[dir] = current;
+#endif
 	direction = snd_pcm_substream_to_dma_direction(substream);
 
 	if (!substream->runtime->no_period_wakeup)
@@ -199,6 +226,10 @@ static int dmaengine_pcm_prepare_and_submit(struct snd_pcm_substream *substream)
 		substream->runtime->dma_addr,
 		snd_pcm_lib_buffer_bytes(substream),
 		snd_pcm_lib_period_bytes(substream), direction, flags);
+#if TSAI_DS5
+	sprintf(msg, "dmaengine_pcm_prepare_and_submit %x bufb %u perb %u", 
+	substream->runtime->dma_addr, snd_pcm_lib_buffer_bytes(substream), snd_pcm_lib_period_bytes(substream));	
+#endif
 #endif
 
 	if (!desc)
@@ -207,7 +238,10 @@ static int dmaengine_pcm_prepare_and_submit(struct snd_pcm_substream *substream)
 	desc->callback = dmaengine_pcm_dma_complete;
 	desc->callback_param = substream;
 	prtd->cookie = dmaengine_submit(desc);
-
+#if TSAI_DS5
+	ANNOTATE_CHANNEL_COLOR_TS(6, ANNOTATE_BLUE, msg, &tsai_ts);
+	ANNOTATE_CHANNEL_END(6);
+#endif
 	return 0;
 }
 

@@ -88,6 +88,12 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
+#if TSAI
+	#include "tsai_macro.h"
+#endif
+#if TSAI_DS5
+	#include "streamline_annotate.h"
+#endif
 
 void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period)
 {
@@ -1475,6 +1481,13 @@ static void ttwu_queue(struct task_struct *p, int cpu)
 	raw_spin_unlock(&rq->lock);
 }
 
+#if TSAI
+	struct task_struct *tsai_debug_wake_up_task;
+	extern int tsai_spy_log(const char* fmt, ...);
+
+	EXPORT_SYMBOL(tsai_debug_wake_up_task);
+#endif
+
 /**
  * try_to_wake_up - wake up a thread
  * @p: the thread to be awakened
@@ -1509,6 +1522,18 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 
 	success = 1; /* we're going to change ->state */
 	cpu = task_cpu(p);
+#if TSAI
+	if (tsai_debug_wake_up_task && p==tsai_debug_wake_up_task) {
+		tsai_spy_log("try_to_wake_up[enter] task %d %s state %d \n", p->pid, p->comm, p->state);
+		pr_info("TSAI: try_to_wake_up[enter] wakee task %d %s state %d \n", p->pid, p->comm, p->state);
+		pr_info("TSAI: CURRENT %d %s state %d \n", current->pid, current->comm, current->state);
+		//__asm("hlt #0");
+		BKPT;
+	}
+#endif
+#if 0 && TSAI
+	trace_tsai_sched_try_wakeup(p, success);
+#endif
 
 	if (p->on_rq && ttwu_remote(p, wake_flags))
 		goto stat;
@@ -1544,6 +1569,12 @@ stat:
 out:
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 
+#if TSAI
+	if (tsai_debug_wake_up_task && p==tsai_debug_wake_up_task) {
+		tsai_spy_log("try_to_wake_up task %d %s result %d\n", p->pid, p->comm, success);
+		/* don't clear just yet, when the task actually wake up for sleep, do another breakpoint and then clear */
+	}
+#endif
 	return success;
 }
 
@@ -2898,14 +2929,20 @@ EXPORT_SYMBOL(sub_preempt_count);
 /*
  * Print scheduling while atomic bug:
  */
-static noinline void __schedule_bug(struct task_struct *prev)
+#if TSAI_OPT
+#else
+static noinline
+#endif 
+void __schedule_bug(struct task_struct *prev)
 {
 	if (oops_in_progress)
 		return;
 
 	printk(KERN_ERR "BUG: scheduling while atomic: %s/%d/0x%08x\n",
 		prev->comm, prev->pid, preempt_count());
-
+#if 0 && TSAI
+	BKPT;
+#endif
 	debug_show_held_locks(prev);
 	print_modules();
 	if (irqs_disabled())
@@ -2917,15 +2954,29 @@ static noinline void __schedule_bug(struct task_struct *prev)
 /*
  * Various schedule()-time debugging checks and statistics:
  */
-static inline void schedule_debug(struct task_struct *prev)
+#if TSAI_OPT
+#else
+static inline
+#endif 
+void schedule_debug(struct task_struct *prev)
 {
 	/*
 	 * Test if we are atomic. Since do_exit() needs to call into
 	 * schedule() atomically, we ignore that path for now.
 	 * Otherwise, whine if we are scheduling when we should not be.
 	 */
+#if 1 && TSAI_OPT
+	{
+		/* in_atomic_preempt_off() ((preempt_count() & ~PREEMPT_ACTIVE) != PREEMPT_CHECK_OFFSET) */
+		int precount = preempt_count();
+		bool preempt_off = ((precount & ~PREEMPT_ACTIVE) != PREEMPT_CHECK_OFFSET);
+		if (unlikely(preempt_off && !prev->exit_state))
+			__schedule_bug(prev);
+	}
+#else
 	if (unlikely(in_atomic_preempt_off() && !prev->exit_state))
 		__schedule_bug(prev);
+#endif
 	rcu_sleep_check();
 
 	profile_hit(SCHED_PROFILING, __builtin_return_address(0));
@@ -2967,6 +3018,69 @@ pick_next_task(struct rq *rq)
 
 	BUG(); /* the idle class will always have a runnable task */
 }
+
+#if TSAI
+	unsigned tsai_pid_wait;
+	unsigned tsai_time_wait;
+	char tsai_wait_proc[32];
+#endif
+
+#if TSAI_DS5
+	#include <linux/kallsyms.h>
+	#include <linux/stacktrace.h>
+
+	struct task_struct* debug_schedule_task;
+	char debug_schedule_task_name[64];
+	unsigned debug_schedule_duration_threshold_us = 10000;
+	int debug_schedule_task_main_thread = 0;
+	static	struct timeval debug_tv_pre;
+	static	struct timeval debug_tv_post;
+	static unsigned debug_shedule_duration;
+
+	static int tsai_diff_microsec(struct timeval* first, struct timeval* second)
+	 {
+	 	 int retval;
+	 	 int sec;
+	 	   /* Perform the carry for the later subtraction by updating y. */
+	 	 //first->tv_sec;
+	 	 //first->tv_nsec;
+
+	 	 retval = second->tv_usec - first->tv_usec;	//retval might be negative at this point
+	 	 for (sec = (second->tv_sec - first->tv_sec); sec>0; sec-- ) {
+	 		 retval += 1000000 ;
+	 	 }
+
+	 	 return retval;
+	}
+
+	static int tsai_current_is_debug_schedule_task(void) {
+		int ret = 0;
+
+		if (debug_schedule_task && debug_schedule_task == current) {
+			ret = 1;
+			goto Leave;
+		}
+		if (debug_schedule_task_name[0] && strcmp(debug_schedule_task_name, current->comm)==0 ) {
+			if (debug_schedule_task_main_thread ) {
+				if (current->pid == current->tgid)
+					ret = 1;
+			}
+			else ret = 1;
+			goto Leave;
+		}
+#if 0
+		if (strcmp("volt-loader", current->comm)==0) {
+			return 1;
+		}
+		if (strcmp("org.volt.apps", current->comm)==0) {
+			return 1;
+		}
+#endif
+Leave:
+		return ret;
+	}
+
+#endif
 
 /*
  * __schedule() is the main scheduler function.
@@ -3055,6 +3169,11 @@ need_resched:
 		}
 		switch_count = &prev->nvcsw;
 	}
+#if TSAI
+	if (tsai_current_is_debug_schedule_task()) {
+		do_gettimeofday(&debug_tv_pre);
+	}
+#endif
 
 	pre_schedule(rq, prev);
 
@@ -3072,6 +3191,67 @@ need_resched:
 		++*switch_count;
 
 		context_switch(rq, prev, next); /* unlocks the rq */
+#if TSAI
+	/* To intercept use T32
+	 * V debug_schedule_task_name="IMG_SWAP_QUEUE"
+	 * V debug_schedule_duration_threshold_us=10000.
+	 * */
+	if (tsai_current_is_debug_schedule_task()) {
+		do_gettimeofday(&debug_tv_post);
+
+		debug_shedule_duration = tsai_diff_microsec(&debug_tv_pre, &debug_tv_post);
+		if ( (debug_shedule_duration) > debug_schedule_duration_threshold_us) {
+			struct pt_regs* regs = current_pt_regs();
+			unsigned int user_stack = current_user_stack_pointer();
+			pr_info("TSAI user stack %x regs %p \n", user_stack, regs);
+			BKPT;
+			//show_stack(current, (unsigned long*)user_stack); /* this can only interpret kernel side stack */
+		}
+	}	
+#endif
+#if TSAI
+	if (tsai_debug_wake_up_task && tsai_debug_wake_up_task==current) {
+		BKPT;
+		tsai_debug_wake_up_task = 0;
+	}
+#endif
+#if 0 && TSAI_DS5
+		if (debug_shedule_duration > 15000 /* && (strcmp(current->comm, "volt-loader")==0 || strcmp(current->comm, "org.volt.apps")==0 ) */)
+		{
+			//char func[128];
+			//unsigned long lr;
+			//lr = (unsigned long)__builtin_return_address(0);
+			//sprint_symbol_no_offset(func, lr);
+			int i;
+			struct stack_trace trace;
+			void* entry[20];
+			char* pMsg;
+			int max_level;
+			char callstack[256];
+
+			trace.nr_entries = 0;
+			trace.max_entries = 5;
+			trace.entries = (unsigned long *)entry;
+			trace.skip = 4;
+
+			save_stack_trace(&trace);
+
+			max_level = (trace.nr_entries > 10 ? 10: trace.nr_entries);
+			pMsg = callstack;
+
+			for (i=0; i < max_level; i++) {
+				pMsg += sprint_symbol_no_offset(pMsg, trace.entries[i]);
+				*pMsg++ = ' ';
+			}
+			*pMsg = 0;
+
+			SRUK_ANNOTATE_CHANNEL_COLOR_END(300, ANNOTATE_BLACK, "ctx Switch %d ms, caller %s comm %s",
+					debug_shedule_duration, callstack, current->comm);
+			__asm("nop");
+			//BKPT;
+		}
+	
+#endif
 		/*
 		 * The context switch have flipped the stack from under us
 		 * and restored the local variables which were saved when
